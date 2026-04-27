@@ -18,7 +18,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ── Usuarios ──
+    # ── Usuarios ──
 def get_user(user_id: int):
     conn = get_connection()
     user = conn.execute(
@@ -57,7 +57,7 @@ def get_subjects(user_id: int):
     conn.close()
     return [r["nombre"] for r in rows]
 
-# ── Tareas ──
+    # ── Tareas ──
 def save_task(user_id: int, titulo: str, materia: str = None,
               fecha_limite: str = None, prioridad: str = "media"):
     conn = get_connection()
@@ -80,7 +80,7 @@ def get_pending_tasks(user_id: int):
     conn.close()
     return [dict(r) for r in rows]
 
-# ── Historial ──
+    # ── Historial ──
 def save_message(user_id: int, rol: str, contenido: str):
     conn = get_connection()
     conn.execute(

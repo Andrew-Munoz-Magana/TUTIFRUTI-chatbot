@@ -1,7 +1,7 @@
 from database import db
 from llm.groq_client import chat
 
-# ── Estados del onboarding ──
+    #── Estados del onboarding ──
 ONBOARDING_STEPS = ["nombre", "carrera", "semestre", "materias", "completo"]
 
 
@@ -33,10 +33,10 @@ def build_user_context(user_id: int) -> str:
 
 class TutifrutiBot:
     def __init__(self):
-        # Guardamos el estado en memoria por sesión
+            #guardamos el estado en memoria por sesión
         self.user_id     = None
-        self.onboarding  = {}          # datos temporales durante onboarding
-        self.step        = "nombre"    # paso actual del onboarding
+        self.onboarding  = {}          #datos temporales durante onboarding
+        self.step        = "nombre"    #paso actual del onboarding
 
     def is_onboarding_complete(self) -> bool:
         return self.user_id is not None
@@ -50,12 +50,12 @@ class TutifrutiBot:
 
         return self._handle_conversation(user_input)
 
-    # ── Onboarding ──────────────────────────────────────────────────
+        # ── Onboarding ──────────────────────────────────────────────────
 
     def _handle_onboarding(self, text: str) -> str:
         if self.step == "nombre":
             if len(text) < 2:
-                return "Por favor dime tu nombre para empezar. 😊"
+                return "Por favor dime tu nombre para empezar."
             self.onboarding["nombre"] = text.title()
             self.step = "carrera"
             return f"¡Hola, {self.onboarding['nombre']}! 👋 ¿Qué carrera estás estudiando?"
@@ -79,7 +79,7 @@ class TutifrutiBot:
             if not materias:
                 return "Necesito al menos una materia. Escríbelas separadas por comas."
 
-            # Guardar todo en la base de datos
+                #Guardar todo en la base de datos
             user_id = db.create_user(
                 self.onboarding["nombre"],
                 self.onboarding["carrera"],
@@ -101,22 +101,22 @@ class TutifrutiBot:
 
         return "Algo salió mal en el registro. Intenta de nuevo."
 
-    # ── Conversación principal ───────────────────────────────────────
+        #── Conversacion principal ───────────────────────────────────────
 
     def _handle_conversation(self, user_input: str) -> str:
-        # Guardar mensaje del usuario
+            #Guardar mensaje del usuario
         db.save_message(self.user_id, "user", user_input)
 
-        # Recuperar historial reciente
+            #Recuperar historial reciente
         history = db.get_history(self.user_id, limit=10)
 
-        # Construir contexto del usuario
+            #Construir contexto del usuario
         context = build_user_context(self.user_id)
 
-        # Llamar al LLM
+            #Llamar al LLM
         response = chat(history, user_context=context)
 
-        # Guardar respuesta del bot
+            #Guardar respuesta del bot
         db.save_message(self.user_id, "assistant", response)
 
         return response

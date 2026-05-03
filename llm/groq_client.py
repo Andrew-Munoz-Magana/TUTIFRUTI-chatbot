@@ -44,3 +44,35 @@ def chat(messages: list[dict], user_context: str = "") -> str:
 
     except Exception as e:
         return f"⚠️ Hubo un problema al conectar con el modelo: {str(e)}"
+    
+def extraer_tarea(mensaje: str) -> dict | None:
+    """Intenta extraer datos de una tarea desde un mensaje en lenguaje natural."""
+    prompt = f"""Analiza este mensaje de un estudiante y extrae los datos de la tarea si los hay.
+Responde ÚNICAMENTE con un objeto JSON con estas claves:
+- "es_tarea": true o false (¿el mensaje menciona una tarea, entrega o pendiente académico?)
+- "titulo": nombre de la tarea o null
+- "materia": materia a la que pertenece o null
+- "fecha_limite": fecha en formato YYYY-MM-DD o null
+- "prioridad": "alta", "media" o "baja" según urgencia, o "media" por defecto
+
+Mensaje: "{mensaje}"
+
+Responde solo con el JSON, sin explicaciones ni markdown."""
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=200,
+        )
+        import json
+        contenido = response.choices[0].message.content.strip()
+        # Limpiar posibles backticks
+        contenido = contenido.replace("```json", "").replace("```", "").strip()
+        datos = json.loads(contenido)
+        return datos if datos.get("es_tarea") else None
+    except Exception:
+        return None
+
+

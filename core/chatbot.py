@@ -1,5 +1,6 @@
 from database import db
 from llm.groq_client import chat
+from llm.groq_client import chat, extraer_tarea
 
     #── Estados del onboarding ──
 ONBOARDING_STEPS = ["nombre", "carrera", "semestre", "materias", "completo"]
@@ -107,39 +108,32 @@ class TutifrutiBot:
             #Guardar mensaje del usuario
         db.save_message(self.user_id, "user", user_input)
 
-            #Recuperar historial reciente
-        history = db.get_history(self.user_id, limit=10)
+            #Intentar extraer tarea del mensaje
+        tarea = extraer_tarea(user_input)
+        tarea_guardada = None
 
-            #Construir contexto del usuario
+        if tarea and tarea.get("titulo"):
+            db.save_task(
+                user_id      = self.user_id,
+                titulo       = tarea.get("titulo"),
+                materia      = tarea.get("materia"),
+                fecha_limite = tarea.get("fecha_limite"),
+                prioridad    = tarea.get("prioridad", "media")
+            )
+            tarea_guardada = tarea.get("titulo")
+
+        # Recuperar historial y contexto
+        history = db.get_history(self.user_id, limit=10)
         context = build_user_context(self.user_id)
+
+            #Agregar nota al contexto si se guardo una tarea
+        if tarea_guardada:
+            context += f"\nNOTA: Acabas de guardar automáticamente la tarea '{tarea_guardada}' en la base de datos. Confirma al usuario que la registraste."
 
             #Llamar al LLM
         response = chat(history, user_context=context)
 
-            #Guardar respuesta del bot
+            #Guardar respuesta
         db.save_message(self.user_id, "assistant", response)
 
         return response
-    
-    def login(self, user_id: int) -> str:
-        """Carga un usuario existente saltando el onboarding"""
-        self.user_id = user_id
-        self.step    = "completo"
-        user     = db.get_user(user_id)
-        materias = db.get_subjects(user_id)
-        tareas   = db.get_pending_tasks(user_id)
-
-        linea_materias = ", ".join(materias) if materias else "ninguna registrada"
-        linea_tareas   = f"{len(tareas)} pendiente(s)" if tareas else "ninguna por ahora"
-
-        return (
-            f"¡Bienvenido de vuelta, {user['nombre']}! 👋\n\n"
-            f"📚 {user['carrera']} — Semestre {user['semestre']}\n"
-            f"Materias: {linea_materias}\n"
-            f"Tareas: {linea_tareas}\n\n"
-            f"¿En qué te puedo ayudar hoy?"
-        )
-
-
-
-

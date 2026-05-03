@@ -100,3 +100,12 @@ def get_history(user_id: int, limit: int = 10):
     ).fetchall()
     conn.close()
     return [{"role": r["rol"], "content": r["contenido"]} for r in reversed(rows)]
+
+def get_user_by_nombre(nombre: str):
+    conn = get_connection()
+    user = conn.execute(
+        "SELECT * FROM users WHERE LOWER(nombre) = LOWER(?)",
+        (nombre.strip(),)
+    ).fetchone()
+    conn.close()
+    return dict(user) if user else None

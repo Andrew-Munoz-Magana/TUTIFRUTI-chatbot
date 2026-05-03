@@ -36,3 +36,12 @@ CREATE TABLE IF NOT EXISTS messages (
     timestamp   DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS weekly_plans (
+    plan_id       INTEGER  PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER  NOT NULL,
+    semana_inicio DATE     NOT NULL,
+    contenido     TEXT     NOT NULL,
+    generado_en   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);

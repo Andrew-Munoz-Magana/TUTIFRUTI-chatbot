@@ -120,3 +120,26 @@ class TutifrutiBot:
         db.save_message(self.user_id, "assistant", response)
 
         return response
+    
+    def login(self, user_id: int) -> str:
+        """Carga un usuario existente saltando el onboarding"""
+        self.user_id = user_id
+        self.step    = "completo"
+        user     = db.get_user(user_id)
+        materias = db.get_subjects(user_id)
+        tareas   = db.get_pending_tasks(user_id)
+
+        linea_materias = ", ".join(materias) if materias else "ninguna registrada"
+        linea_tareas   = f"{len(tareas)} pendiente(s)" if tareas else "ninguna por ahora"
+
+        return (
+            f"¡Bienvenido de vuelta, {user['nombre']}! 👋\n\n"
+            f"📚 {user['carrera']} — Semestre {user['semestre']}\n"
+            f"Materias: {linea_materias}\n"
+            f"Tareas: {linea_tareas}\n\n"
+            f"¿En qué te puedo ayudar hoy?"
+        )
+
+
+
+

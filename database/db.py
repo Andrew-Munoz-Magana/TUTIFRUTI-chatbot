@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import datetime
 
 DB_PATH = "tutifruti.db"
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -109,3 +110,44 @@ def get_user_by_nombre(nombre: str):
     ).fetchone()
     conn.close()
     return dict(user) if user else None
+
+def get_plan_semanal(user_id: int) -> dict | None:
+    """Recupera el plan de la semana actual si existe."""
+    hoy = datetime.date.today()
+    lunes = hoy - datetime.timedelta(days=hoy.weekday())
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT * FROM weekly_plans
+           WHERE user_id = ? AND semana_inicio = ?
+           ORDER BY generado_en DESC LIMIT 1""",
+        (user_id, lunes.isoformat())
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def save_plan_semanal(user_id: int, contenido: str) -> None:
+    """Guarda el plan semanal generado."""
+    hoy = datetime.date.today()
+    lunes = hoy - datetime.timedelta(days=hoy.weekday())
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO weekly_plans (user_id, semana_inicio, contenido)
+           VALUES (?, ?, ?)""",
+        (user_id, lunes.isoformat(), contenido)
+    )
+    conn.commit()
+    conn.close()
+
+def completar_tarea(user_id: int, titulo: str) -> bool:
+    """Marca una tarea como completada por título aproximado."""
+    conn = get_connection()
+    cursor = conn.execute(
+        """UPDATE tasks SET estado = 'completada'
+           WHERE user_id = ? AND LOWER(titulo) LIKE LOWER(?)
+           AND estado = 'pendiente'""",
+        (user_id, f"%{titulo}%")
+    )
+    conn.commit()
+    afectadas = cursor.rowcount
+    conn.close()
+    return afectadas > 0

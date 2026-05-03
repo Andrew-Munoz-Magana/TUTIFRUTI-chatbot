@@ -1,6 +1,6 @@
 from database import db
-from llm.groq_client import chat
-from llm.groq_client import chat, extraer_tarea
+from llm.groq_client import chat, extraer_tarea, generar_plan
+
 
     #── Estados del onboarding ──
 ONBOARDING_STEPS = ["nombre", "carrera", "semestre", "materias", "completo"]
@@ -105,10 +105,10 @@ class TutifrutiBot:
         #── Conversacion principal ───────────────────────────────────────
 
     def _handle_conversation(self, user_input: str) -> str:
-            #Guardar mensaje del usuario
+        # Guardar mensaje del usuario
         db.save_message(self.user_id, "user", user_input)
 
-            #Intentar extraer tarea del mensaje
+        # Intentar extraer tarea del mensaje
         tarea = extraer_tarea(user_input)
         tarea_guardada = None
 
@@ -122,18 +122,44 @@ class TutifrutiBot:
             )
             tarea_guardada = tarea.get("titulo")
 
+        # Detectar intenciones
+        palabras_plan = ["plan", "semana", "organiza", "planifica", "horario", "agenda"]
+        pide_plan      = any(p in user_input.lower() for p in palabras_plan)
+        pide_regenerar = any(p in user_input.lower() for p in ["regenera", "nuevo plan", "actualiza el plan"])
+
+        # Mostrar plan existente si ya hay uno esta semana
+        if pide_plan and not pide_regenerar:
+            plan_existente = db.get_plan_semanal(self.user_id)
+            if plan_existente:
+                db.save_message(self.user_id, "assistant", plan_existente["contenido"])
+                return f"📅 Aquí está tu plan de esta semana:\n\n{plan_existente['contenido']}"
+
+        # Generar plan nuevo si lo pide y no existe o quiere regenerar
+        if pide_plan and (pide_regenerar or not db.get_plan_semanal(self.user_id)):
+            tareas = db.get_pending_tasks(self.user_id)
+            perfil = db.get_user(self.user_id)
+            plan   = generar_plan(tareas, perfil)
+            db.save_plan_semanal(self.user_id, plan)
+            db.save_message(self.user_id, "assistant", plan)
+            return f"📅 Aquí está tu plan para esta semana:\n\n{plan}"
+
         # Recuperar historial y contexto
         history = db.get_history(self.user_id, limit=10)
         context = build_user_context(self.user_id)
 
-            #Agregar nota al contexto si se guardo una tarea
+        # Nota si se guardó una tarea
         if tarea_guardada:
-            context += f"\nNOTA: Acabas de guardar automáticamente la tarea '{tarea_guardada}' en la base de datos. Confirma al usuario que la registraste."
+            context += f"\nNOTA: Acabas de guardar automáticamente la tarea '{tarea_guardada}'. Confirma al usuario que la registraste."
 
-            #Llamar al LLM
+        # Nota si quiere completar una tarea
+        palabras_completar = ["completé", "termine", "terminé", "listo", "ya entregué", "ya hice"]
+        if any(p in user_input.lower() for p in palabras_completar):
+            context += "\nNOTA: El usuario puede estar indicando que completó una tarea. Pregúntale cuál para marcarla como completada."
+
+        # Llamar al LLM
         response = chat(history, user_context=context)
 
-            #Guardar respuesta
+        # Guardar respuesta
         db.save_message(self.user_id, "assistant", response)
 
         return response

@@ -75,4 +75,37 @@ Responde solo con el JSON, sin explicaciones ni markdown."""
     except Exception:
         return None
 
+def generar_plan(tareas: list[dict], perfil: dict) -> str:
+    """Genera un plan semanal estructurado basado en las tareas pendientes."""
+    if not tareas:
+        return "No tienes tareas pendientes registradas. Agrega algunas para que pueda armar tu plan."
 
+    tareas_texto = "\n".join([
+        f"- {t['titulo']} ({t['materia'] or 'sin materia'}) · {t['prioridad']} · vence: {t['fecha_limite'] or 'sin fecha'}"
+        for t in tareas
+    ])
+
+    prompt = f"""Eres TUTIFRUTI, asistente académico. Genera un plan de estudio semanal para este estudiante.
+
+Perfil: {perfil.get('nombre')} — {perfil.get('carrera')}, semestre {perfil.get('semestre')}
+
+Tareas pendientes:
+{tareas_texto}
+
+Instrucciones:
+- Organiza el plan de lunes a viernes
+- Asigna bloques de estudio usando Pomodoro (25 min) para tareas cortas y Deep Work (90 min) para proyectos
+- Prioriza las tareas más urgentes y de mayor prioridad
+- Sé conciso y claro
+- Usa emojis para que sea más visual"""
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"No pude generar el plan en este momento: {str(e)}"

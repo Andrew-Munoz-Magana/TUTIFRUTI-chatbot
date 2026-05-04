@@ -1,8 +1,6 @@
 from database import db
 from llm.groq_client import chat, extraer_tarea, generar_plan
 
-
-    #── Estados del onboarding ──
 ONBOARDING_STEPS = ["nombre", "carrera", "semestre", "materias", "completo"]
 
 
@@ -15,7 +13,7 @@ def build_user_context(user_id: int) -> str:
     materias = db.get_subjects(user_id)
     tareas   = db.get_pending_tasks(user_id)
 
-    context = f"Nombre: {user['nombre']}\n"
+    context  = f"Nombre: {user['nombre']}\n"
     context += f"Carrera: {user['carrera']} — Semestre {user['semestre']}\n"
 
     if materias:
@@ -34,24 +32,39 @@ def build_user_context(user_id: int) -> str:
 
 class TutifrutiBot:
     def __init__(self):
-            #guardamos el estado en memoria por sesión
-        self.user_id     = None
-        self.onboarding  = {}          #datos temporales durante onboarding
-        self.step        = "nombre"    #paso actual del onboarding
+        self.user_id    = None
+        self.onboarding = {}
+        self.step       = "nombre"
 
     def is_onboarding_complete(self) -> bool:
         return self.user_id is not None
 
     def process(self, user_input: str) -> str:
-        """Punto de entrada principal. Recibe texto y devuelve respuesta."""
         user_input = user_input.strip()
-
         if not self.is_onboarding_complete():
             return self._handle_onboarding(user_input)
-
         return self._handle_conversation(user_input)
 
-        # ── Onboarding ──────────────────────────────────────────────────
+    def login(self, user_id: int) -> str:
+        """Carga un usuario existente saltando el onboarding."""
+        self.user_id = user_id
+        self.step    = "completo"
+        user     = db.get_user(user_id)
+        materias = db.get_subjects(user_id)
+        tareas   = db.get_pending_tasks(user_id)
+
+        linea_materias = ", ".join(materias) if materias else "ninguna registrada"
+        linea_tareas   = f"{len(tareas)} pendiente(s)" if tareas else "ninguna por ahora"
+
+        return (
+            f"¡Bienvenido de vuelta, {user['nombre']}! 👋\n\n"
+            f"📚 {user['carrera']} — Semestre {user['semestre']}\n"
+            f"Materias: {linea_materias}\n"
+            f"Tareas: {linea_tareas}\n\n"
+            f"¿En qué te puedo ayudar hoy?"
+        )
+
+    # ── Onboarding ──────────────────────────────────────────────────
 
     def _handle_onboarding(self, text: str) -> str:
         if self.step == "nombre":
@@ -80,7 +93,6 @@ class TutifrutiBot:
             if not materias:
                 return "Necesito al menos una materia. Escríbelas separadas por comas."
 
-                #Guardar todo en la base de datos
             user_id = db.create_user(
                 self.onboarding["nombre"],
                 self.onboarding["carrera"],
@@ -102,13 +114,13 @@ class TutifrutiBot:
 
         return "Algo salió mal en el registro. Intenta de nuevo."
 
-        #── Conversacion principal ───────────────────────────────────────
+    # ── Conversación principal ───────────────────────────────────────
 
     def _handle_conversation(self, user_input: str) -> str:
-        # Guardar mensaje del usuario
+        # 1. Guardar mensaje del usuario
         db.save_message(self.user_id, "user", user_input)
 
-        # Intentar extraer tarea del mensaje
+        # 2. Intentar extraer tarea del mensaje
         tarea = extraer_tarea(user_input)
         tarea_guardada = None
 
@@ -122,19 +134,41 @@ class TutifrutiBot:
             )
             tarea_guardada = tarea.get("titulo")
 
-        # Detectar intenciones
-        palabras_plan = ["plan", "semana", "organiza", "planifica", "horario", "agenda"]
-        pide_plan      = any(p in user_input.lower() for p in palabras_plan)
-        pide_regenerar = any(p in user_input.lower() for p in ["regenera", "nuevo plan", "actualiza el plan"])
+        # 3. Detectar intenciones
+        palabras_plan      = ["plan", "semana", "organiza", "planifica", "horario", "agenda"]
+        palabras_regenerar = ["regenera", "nuevo plan", "actualiza el plan"]
+        palabras_resumen   = ["resumen", "progreso", "cuántas tareas", "cuantas tareas", "cómo voy", "como voy", "estadísticas"]
+        palabras_completar = ["completé", "termine", "terminé", "listo", "ya entregué", "ya hice"]
 
-        # Mostrar plan existente si ya hay uno esta semana
+        pide_plan      = any(p in user_input.lower() for p in palabras_plan)
+        pide_regenerar = any(p in user_input.lower() for p in palabras_regenerar)
+        pide_resumen   = any(p in user_input.lower() for p in palabras_resumen)
+
+        # 4. Resumen de progreso
+        if pide_resumen:
+            r       = db.get_resumen_progreso(self.user_id)
+            mensaje = "📊 **Tu resumen de progreso:**\n\n"
+            mensaje += f"✅ Completadas: {r['completadas']}\n"
+            mensaje += f"⏳ Pendientes:  {r['pendientes']}\n"
+            mensaje += f"📝 Total:       {r['total']}\n"
+            if r['completadas'] > 0 and r['total'] > 0:
+                pct      = round((r['completadas'] / r['total']) * 100)
+                mensaje += f"📈 Avance: {pct}%\n"
+            if r['urgente']:
+                mensaje += f"\n🚨 Tarea más urgente: **{r['urgente']['titulo']}** — vence el {r['urgente']['fecha_limite']}"
+            else:
+                mensaje += "\n🎉 No tienes tareas con fecha límite próxima."
+            db.save_message(self.user_id, "assistant", mensaje)
+            return mensaje
+
+        # 5. Plan existente
         if pide_plan and not pide_regenerar:
             plan_existente = db.get_plan_semanal(self.user_id)
             if plan_existente:
                 db.save_message(self.user_id, "assistant", plan_existente["contenido"])
                 return f"📅 Aquí está tu plan de esta semana:\n\n{plan_existente['contenido']}"
 
-        # Generar plan nuevo si lo pide y no existe o quiere regenerar
+        # 6. Generar plan nuevo
         if pide_plan and (pide_regenerar or not db.get_plan_semanal(self.user_id)):
             tareas = db.get_pending_tasks(self.user_id)
             perfil = db.get_user(self.user_id)
@@ -143,23 +177,21 @@ class TutifrutiBot:
             db.save_message(self.user_id, "assistant", plan)
             return f"📅 Aquí está tu plan para esta semana:\n\n{plan}"
 
-        # Recuperar historial y contexto
+        # 7. Recuperar historial y contexto
         history = db.get_history(self.user_id, limit=10)
         context = build_user_context(self.user_id)
 
-        # Nota si se guardó una tarea
+        # 8. Notas de contexto adicionales
         if tarea_guardada:
             context += f"\nNOTA: Acabas de guardar automáticamente la tarea '{tarea_guardada}'. Confirma al usuario que la registraste."
 
-        # Nota si quiere completar una tarea
-        palabras_completar = ["completé", "termine", "terminé", "listo", "ya entregué", "ya hice"]
         if any(p in user_input.lower() for p in palabras_completar):
             context += "\nNOTA: El usuario puede estar indicando que completó una tarea. Pregúntale cuál para marcarla como completada."
 
-        # Llamar al LLM
+        # 9. Llamar al LLM
         response = chat(history, user_context=context)
 
-        # Guardar respuesta
+        # 10. Guardar respuesta
         db.save_message(self.user_id, "assistant", response)
 
         return response

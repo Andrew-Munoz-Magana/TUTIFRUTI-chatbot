@@ -151,3 +151,40 @@ def completar_tarea(user_id: int, titulo: str) -> bool:
     afectadas = cursor.rowcount
     conn.close()
     return afectadas > 0
+
+def get_resumen_progreso(user_id: int) -> dict:
+    """Calcula métricas de progreso del estudiante."""
+    conn = get_connection()
+
+    total = conn.execute(
+        "SELECT COUNT(*) FROM tasks WHERE user_id = ?",
+        (user_id,)
+    ).fetchone()[0]
+
+    completadas = conn.execute(
+        "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND estado = 'completada'",
+        (user_id,)
+    ).fetchone()[0]
+
+    pendientes = conn.execute(
+        "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND estado = 'pendiente'",
+        (user_id,)
+    ).fetchone()[0]
+
+    urgente = conn.execute(
+        """SELECT titulo, fecha_limite FROM tasks
+           WHERE user_id = ? AND estado = 'pendiente'
+           AND fecha_limite IS NOT NULL
+           ORDER BY fecha_limite ASC LIMIT 1""",
+        (user_id,)
+    ).fetchone()
+
+    conn.close()
+
+    return {
+        "total":       total,
+        "completadas": completadas,
+        "pendientes":  pendientes,
+        "urgente":     dict(urgente) if urgente else None
+    }
+

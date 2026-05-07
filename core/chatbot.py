@@ -120,11 +120,11 @@ class TutifrutiBot:
         # 1. Guardar mensaje del usuario
         db.save_message(self.user_id, "user", user_input)
 
-        # 2. Intentar extraer tarea del mensaje
-        tarea = extraer_tarea(user_input)
-        tarea_guardada = None
+        # 2. Intentar extraer tareas del mensaje
+        tareas_detectadas = extraer_tarea(user_input)
+        tareas_guardadas = []
 
-        if tarea and tarea.get("titulo"):
+        for tarea in tareas_detectadas:
             db.save_task(
                 user_id      = self.user_id,
                 titulo       = tarea.get("titulo"),
@@ -132,7 +132,8 @@ class TutifrutiBot:
                 fecha_limite = tarea.get("fecha_limite"),
                 prioridad    = tarea.get("prioridad", "media")
             )
-            tarea_guardada = tarea.get("titulo")
+            tareas_guardadas.append(tarea.get("titulo"))
+        
 
         # 3. Detectar intenciones
         palabras_plan      = ["plan", "semana", "organiza", "planifica", "horario", "agenda"]
@@ -163,8 +164,9 @@ class TutifrutiBot:
 
         # 5. Plan existente
         if pide_plan and not pide_regenerar:
-            plan_existente = db.get_plan_semanal(self.user_id)
-            if plan_existente:
+            plan_existente  = db.get_plan_semanal(self.user_id)
+            tareas_actuales = db.get_pending_tasks(self.user_id)
+            if plan_existente and tareas_actuales:
                 db.save_message(self.user_id, "assistant", plan_existente["contenido"])
                 return f"📅 Aquí está tu plan de esta semana:\n\n{plan_existente['contenido']}"
 
@@ -181,10 +183,11 @@ class TutifrutiBot:
         history = db.get_history(self.user_id, limit=10)
         context = build_user_context(self.user_id)
 
-        # 8. Notas de contexto adicionales
-        if tarea_guardada:
-            context += f"\nNOTA: Acabas de guardar automáticamente la tarea '{tarea_guardada}'. Confirma al usuario que la registraste."
-
+        # 8. Nota si se guardaron tareas y contexto adicional
+        if tareas_guardadas:
+            lista = ", ".join(tareas_guardadas)
+            context += f"\nNOTA: Acabas de guardar automáticamente estas tareas en la base de datos: {lista}. Confírmale al usuario cuáles registraste."
+        
         if any(p in user_input.lower() for p in palabras_completar):
             context += "\nNOTA: El usuario puede estar indicando que completó una tarea. Pregúntale cuál para marcarla como completada."
 

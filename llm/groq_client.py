@@ -45,35 +45,44 @@ def chat(messages: list[dict], user_context: str = "") -> str:
     except Exception as e:
         return f"⚠️ Hubo un problema al conectar con el modelo: {str(e)}"
     
-def extraer_tarea(mensaje: str) -> dict | None:
-    """Intenta extraer datos de una tarea desde un mensaje en lenguaje natural."""
-    prompt = f"""Analiza este mensaje de un estudiante y extrae los datos de la tarea si los hay.
-Responde ÚNICAMENTE con un objeto JSON con estas claves:
-- "es_tarea": true o false (¿el mensaje menciona una tarea, entrega o pendiente académico?)
-- "titulo": nombre de la tarea o null
+def extraer_tarea(mensaje: str) -> list[dict]:
+    """Extrae una o varias tareas desde un mensaje en lenguaje natural."""
+    import datetime
+    hoy = datetime.date.today().isoformat()
+
+    prompt = f"""Analiza este mensaje de un estudiante universitario.
+Extrae TODAS las tareas, entregas o pendientes académicos que mencione.
+Hoy es {hoy}, usa esto para calcular fechas relativas como 'el viernes' o 'fin de semana'.
+
+Responde ÚNICAMENTE con un array JSON. Cada elemento debe tener:
+- "es_tarea": true o false
+- "titulo": nombre descriptivo de la tarea
 - "materia": materia a la que pertenece o null
 - "fecha_limite": fecha en formato YYYY-MM-DD o null
-- "prioridad": "alta", "media" o "baja" según urgencia, o "media" por defecto
+- "prioridad": "alta", "media" o "baja"
+
+Si no hay tareas, responde con un array vacío: []
 
 Mensaje: "{mensaje}"
 
-Responde solo con el JSON, sin explicaciones ni markdown."""
+Responde solo con el JSON array, sin explicaciones ni markdown."""
 
     try:
         response = client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=200,
+            max_tokens=400,
         )
         import json
         contenido = response.choices[0].message.content.strip()
-        # Limpiar posibles backticks
         contenido = contenido.replace("```json", "").replace("```", "").strip()
         datos = json.loads(contenido)
-        return datos if datos.get("es_tarea") else None
+        if isinstance(datos, list):
+            return [d for d in datos if d.get("es_tarea") and d.get("titulo")]
+        return []
     except Exception:
-        return None
+        return []
 
 def generar_plan(tareas: list[dict], perfil: dict) -> str:
     """Genera un plan semanal estructurado basado en las tareas pendientes."""
